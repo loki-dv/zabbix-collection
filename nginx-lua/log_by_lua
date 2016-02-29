@@ -1,0 +1,72 @@
+function safe_incr_stats(key)
+    local nkey = key
+    local newval, err = ngx.shared.stats:incr(nkey, 1)
+    if not newval then
+        if err == "not found" then
+            local ok, err = ngx.shared.stats:safe_add(nkey,1)
+            if not ok then
+                ngx.log(ngx.ERR, "error create value ", nkey, ": ", err)
+            end
+        else
+            ngx.log(ngx.ERR, "error incr value ", nkey, ": ", err)
+        end
+    else 
+        if newval > 2048000000 then
+            ngx.shared.stats:safe_set(nkey,nvalue) 
+        end
+    end
+end
+
+
+-- do not count tech locations
+if ngx.var.uri and ngx.re.match(ngx.var.uri,"^/nginx_.+") then return; end
+-- if ngx.var.uri and ngx.re.match(ngx.var.uri,"/favicon.ico$") then return; end
+
+-- ****************** normalize block *******************
+local ngx_upaddr, ngx_upstatus, uptime = ngx.var.upstream_addr, ngx.var.upstream_status, ngx.var.upstream_response_time
+local nstatus, nstatus_limited, cache_status, server_name, bots
+local spdy, bots, log_location = ngx.var.spdy, ngx.var.limit_bots, ngx.var.log_location
+
+nstatus = ngx.status
+if not nstatus then
+    nstatus = "-"
+end
+if     ngx.status < 300 then nstatus_limited = "2xx"
+elseif ngx.status < 400 then nstatus_limited = "3xx"
+elseif ngx.status < 500 then nstatus_limited = "4xx"
+elseif ngx.status < 600 then nstatus_limited = "5xx"
+else nstatus_limited = "other"
+end
+
+cache_status = ngx.var.upstream_cache_status
+if not cache_status then
+    cache_status = "STATIC"
+end
+
+server_name = ngx.var.server_name
+if not server_name then
+    server_name = "-"
+end
+
+
+-- -------
+
+safe_incr_stats("nginx_stats_v2.resp[total]")
+safe_incr_stats("nginx_stats_v2.resp_xx["..nstatus_limited.."]")
+safe_incr_stats("nginx_stats_v2.server_resp_xx["..server_name..","..nstatus_limited.."]")
+safe_incr_stats("nginx_stats_v2.resp["..nstatus.."]")
+safe_incr_stats("nginx_stats_v2.server_resp["..server_name..","..nstatus.."]")
+safe_incr_stats("nginx_stats_v2.cache_status["..cache_status.."]")
+safe_incr_stats("nginx_stats_v2.server_cache_status["..server_name..","..cache_status.."]")
+if spdy and string.len(spdy)>0 then
+    safe_incr_stats("nginx_stats_v2.spdy_resp[total]")
+end
+if bots and string.len(bots)>0 then
+    safe_incr_stats("nginx_stats_v2.bots_resp["..bots.."]")
+    safe_incr_stats("nginx_stats_v2.bots_resp_xx["..bots..","..nstatus_limited.."]")
+    safe_incr_stats("nginx_stats_v2.server_bots_resp["..server_name..","..bots.."]")
+end
+if log_location and string.len(log_location)>0 then
+    safe_incr_stats("nginx_stats_v2.location["..log_location.."]")
+end
+

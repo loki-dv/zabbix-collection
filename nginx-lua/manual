@@ -1,0 +1,4 @@
+Put this lines:
+        log_by_lua_file /etc/nginx/log_by_lua;
+        lua_shared_dict stats 10m;
+in /etc/nginx/nginx.conf in "http" section
